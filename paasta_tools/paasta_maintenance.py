@@ -32,7 +32,6 @@ from paasta_tools.mesos_tools import get_mesos_task_count_by_slave
 from paasta_tools.mesos_tools import MESOS_MASTER_PORT
 
 log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
 
 
 def parse_args():
@@ -74,6 +73,13 @@ def parse_args():
         default=[getfqdn()],
         help='Hostname(s) of machine(s) to start draining. '
         'You can specify <hostname>|<ip> to avoid querying DNS to determine the corresponding IP.',
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='count',
+        dest="verbose",
+        default=0,
+        help="Print out more output."
     )
     return parser.parse_args()
 
@@ -367,14 +373,14 @@ def load_credentials(mesos_secrets='/nail/etc/mesos-slave-secret'):
         with open(mesos_secrets) as data_file:
             data = json.load(data_file)
     except EnvironmentError:
-        print "paasta_maintenance must be run on a Mesos slave containing valid credentials (%s)" % mesos_secrets
+        log.error("paasta_maintenance must be run on a Mesos slave containing valid credentials (%s)" % mesos_secrets)
         raise
     try:
         username = data['principal']
         password = data['secret']
     except KeyError:
-        print "%s does not contain Mesos slave credentials in the expected format." % mesos_secrets
-        print "See http://mesos.apache.org/documentation/latest/authentication/ for details"
+        log.error("%s does not contain Mesos slave credentials in the expected format. "
+                  "See http://mesos.apache.org/documentation/latest/authentication/ for details" % mesos_secrets)
         raise
     return username, password
 
@@ -394,8 +400,7 @@ def drain(hostnames, start, duration):
     except HTTPError as e:
         e.msg = "Error performing maintenance drain. Got error: %s" % e.msg
         raise
-    print drain_output
-    return 0
+    return drain_output
 
 
 def undrain(hostnames):
@@ -412,8 +417,7 @@ def undrain(hostnames):
     except HTTPError as e:
         e.msg = "Error performing maintenance drain. Got error: %s" % e.msg
         raise
-    print undrain_output
-    return 0
+    return undrain_output
 
 
 def down(hostnames):
@@ -429,8 +433,7 @@ def down(hostnames):
     except HTTPError as e:
         e.msg = "Error performing maintenance down. Got error: %s" % e.msg
         raise
-    print down_output
-    return 0
+    return down_output
 
 
 def up(hostnames):
@@ -446,8 +449,7 @@ def up(hostnames):
     except HTTPError as e:
         e.msg = "Error performing maintenance up. Got error: %s" % e.msg
         raise
-    print up_output
-    return 0
+    return up_output
 
 
 def status():
@@ -460,8 +462,7 @@ def status():
     except HTTPError as e:
         e.msg = "Error performing maintenance status. Got error: %s" % e.msg
         raise
-    print "%s" % status.text
-    return 0
+    return status.text
 
 
 def is_safe_to_kill(hostname):
@@ -514,6 +515,7 @@ def get_hosts_past_maintenance_start():
         for window in schedules['windows']:
             if window['unavailability']['start']['nanoseconds'] < current_time:
                 ret += [host['hostname'] for host in window['machine_ids']]
+    log.debug("Hosts past maintenance start: {0}".format(ret))
     return ret
 
 
@@ -529,7 +531,7 @@ def get_hosts_past_maintenance_end():
             end = window['unavailability']['start']['nanoseconds'] + window['unavailability']['duration']['nanoseconds']
             if end < current_time:
                 ret += [host['hostname'] for host in window['machine_ids']]
-    print ret
+    log.debug("Hosts past maintenance end: {0}".format(ret))
     return ret
 
 
@@ -538,6 +540,13 @@ def paasta_maintenance():
     :returns: None
     """
     args = parse_args()
+
+    if args.verbose >= 2:
+        logging.basicConfig(level=logging.DEBUG)
+    elif args.verbose == 1:
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig(level=logging.WARNING)
 
     action = args.action
     hostnames = args.hostname
@@ -567,33 +576,31 @@ def paasta_maintenance():
     duration = args.duration
 
     if action == 'drain':
-        return drain(hostnames, start, duration)
+        ret = drain(hostnames, start, duration)
     elif action == 'undrain':
-        return undrain(hostnames)
+        ret = undrain(hostnames)
     elif action == 'down':
-        return down(hostnames)
+        ret = down(hostnames)
     elif action == 'up':
-        return up(hostnames)
+        ret = up(hostnames)
     elif action == 'status':
-        return status()
+        ret = "%s" % status()
     elif action == 'schedule':
-        ret = schedule()
-        print "%s" % ret
-        return ret
+        ret = "%s" % schedule()
     elif action == 'is_safe_to_kill':
-        return is_safe_to_kill(hostnames[0])
+        ret = is_safe_to_kill(hostnames[0])
     elif action == 'is_host_drained':
         ret = is_host_drained(hostnames[0])
-        print ret
-        return ret
     elif action == 'is_host_down':
-        return is_host_down(hostnames[0])
+        ret = is_host_down(hostnames[0])
     elif action == 'is_host_draining':
-        return is_host_draining(hostnames[0])
+        ret = is_host_draining(hostnames[0])
     elif action == 'is_host_past_maintenance_start':
-        return is_host_past_maintenance_start(hostnames[0])
+        ret = is_host_past_maintenance_start(hostnames[0])
     elif action == 'is_host_past_maintenance_end':
-        return is_host_past_maintenance_end(hostnames[0])
+        ret = is_host_past_maintenance_end(hostnames[0])
+    print ret
+    return ret
 
 
 if __name__ == '__main__':
