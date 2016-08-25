@@ -575,14 +575,15 @@ def paasta_maintenance():
     start = args.start
     duration = args.duration
 
+    ret = "Done"
     if action == 'drain':
-        ret = drain(hostnames, start, duration)
+        drain(hostnames, start, duration)
     elif action == 'undrain':
-        ret = undrain(hostnames)
+        undrain(hostnames)
     elif action == 'down':
-        ret = down(hostnames)
+        down(hostnames)
     elif action == 'up':
-        ret = up(hostnames)
+        up(hostnames)
     elif action == 'status':
         ret = "%s" % status()
     elif action == 'schedule':
